@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pictionary Player</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            background: #f0f0f0;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+        }
+
+        /* Login Screen */
+        .login-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            z-index: 1000;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 320px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* Game Screen */
+        .game-container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .game-header {
+            background: white;
+            padding: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 10;
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .game-status {
+            background: #4CAF50;
+            color: white;
+            padding: 18px 16px;
+            border-radius: 6px;
+            width: 100%;
+            text-align: center;
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        .game-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            height: calc(100vh - 60px);
+            overflow: hidden;
+        }
+
+        /* Drawing Interface */
+        .canvas-area {
+            flex: 1;
+            background: white;
+            position: relative;
+            overflow: hidden;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        #drawingCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .tools {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 10px;
+            background: white;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            border-top: 1px solid #eee;
+            z-index: 100;
+        }
+
+        .color-picker {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+        }
+
+        .brush-size {
+            flex: 1;
+        }
+
+        /* Chat Interface */
+        .chat-area {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            height: 50%;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background: #f8f9fa;
+            margin-bottom: 60px;
+        }
+
+        .message {
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            word-break: break-word;
+            font-size: 14px;
+        }
+
+        .correct-guess {
+            background: #E8F5E9;
+            color: #2E7D32;
+            font-weight: bold;
+        }
+
+        .chat-input-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 10px;
+            background: white;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 8px;
+            z-index: 100;
+        }
+
+        /* Common Input Styles */
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        #clearCanvas {
+            padding: 8px 16px;
+            font-size: 14px;
+            background: #f44336;
+        }
+
+        #sendMessage {
+            padding: 8px 16px;
+            min-width: 80px;
+            font-size: 14px;
+        }
+
+        .error-message {
+            color: #f44336;
+            font-size: 14px;
+            margin-top: 8px;
+            display: none;
+        }
+
+        /* Drawer Mode */
+        .drawer-mode .chat-area {
+            display: none;
+        }
+
+        .drawer-mode .canvas-area {
+            height: calc(100vh - 120px);
+        }
+
+        /* Guesser Mode */
+        .guesser-mode .tools {
+            display: none;
+        }
+
+        .guesser-mode .canvas-area {
+            display: none;
+        }
+
+        .guesser-mode .chat-area {
+            height: calc(100vh - 60px);
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-container">
+            <div class="login-header">
+                <h2>Join Pictionary Game</h2>
+            </div>
+            <form class="login-form" id="loginForm">
+                <input type="text" id="username" placeholder="Enter your username" required minlength="3">
+                <button type="submit">Join Game</button>
+                <div class="error-message" id="errorMessage">
+                    Username must be at least 3 characters long
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div class="game-container" id="gameScreen" style="display: none;">
+        <div class="game-header">
+            <div class="status-bar">
+                <div class="game-status" id="gameStatus">Connecting...</div>
+            </div>
+        </div>
+
+        <div class="game-content">
+            <div class="canvas-area">
+                <canvas id="drawingCanvas"></canvas>
+                <div class="tools" id="tools">
+                    <input type="color" id="colorPicker" class="color-picker" value="#000000">
+                    <input type="range" id="brushSize" class="brush-size" min="1" max="20" value="5">
+                    <button id="clearCanvas">Clear</button>
+                </div>
+            </div>
+
+            <div class="chat-area">
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input-container">
+                    <input type="text" id="chatInput" placeholder="Type your guess...">
+                    <button id="sendMessage">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    const loginScreen = document.getElementById('loginScreen');
+    const gameScreen = document.getElementById('gameScreen');
+    const loginForm = document.getElementById('loginForm');
+    const errorMessage = document.getElementById('errorMessage');
+    const gameContent = document.querySelector('.game-content');
+    const canvas = document.getElementById('drawingCanvas');
+    const ctx = canvas.getContext('2d');
+    const gameStatus = document.getElementById('gameStatus');
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendMessage = document.getElementById('sendMessage');
+
+    let socket = null;
+    let isDrawing = false;
+    let lastX = 0;
+    let lastY = 0;
+    let canDraw = false;
+    let username = '';
+    let timerInterval;
+    let currentWord = null;
+    let canvasState = [];
+
+    function resetToLogin() {
+        console.log('Resetting to login screen');
+        if (timerInterval) clearInterval(timerInterval);
+        gameScreen.style.display = 'none';
+        loginScreen.style.display = 'flex';
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvasState = [];
+        gameStatus.textContent = 'Game reset. Please rejoin.';
+        chatMessages.innerHTML = '';
+        canDraw = false;
+        username = '';
+        document.getElementById('username').value = '';
+        // Reset socket completely
+        if (socket) {
+            socket.disconnect();
+            socket = null;
+        }
+    }
+
+    function initializeSocket() {
+        if (!socket) {
+            socket = io({
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                reconnectionAttempts: Infinity
+            });
+
+            socket.on('connect', () => {
+                console.log('Connected to server with ID:', socket.id);
+                gameStatus.textContent = 'Connected! Joining game...';
+                if (username) socket.emit('join', username);
+                resetCanvasAndEvents();
+            });
+
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+                gameStatus.textContent = 'Disconnected. Trying to reconnect...';
+                canDraw = false;
+            });
+
+            socket.on('gameReset', () => {
+                console.log('Game reset received - resetting to login');
+                resetToLogin();
+                setTimeout(() => {
+                    if (gameScreen.style.display !== 'none') {
+                        console.log('Fallback reload triggered');
+                        window.location.reload();
+                    }
+                }, 1000);
+            });
+
+            socket.on('roundStart', (data) => {
+                const isDrawer = data.drawer === username;
+                setGameMode(isDrawer);
+                console.log('Round start - isDrawer:', isDrawer, 'data:', data);
+                
+                if (isDrawer) {
+                    if (currentWord) {
+                        gameStatus.textContent = `Draw: ${currentWord}`;
+                    }
+                    chatInput.placeholder = "You can't guess while drawing";
+                } else {
+                    currentWord = null;
+                    gameStatus.textContent = `${data.drawer} is drawing... (Category: ${data.category})`;
+                    chatInput.placeholder = "Type your guess...";
+                }
+
+                const serverStartTime = data.startTime;
+                const currentTime = Date.now();
+                let timeLeft = 40 - Math.floor((currentTime - serverStartTime) / 1000);
+                
+                if (timerInterval) clearInterval(timerInterval);
+                
+                if (timeLeft > 0) {
+                    timerInterval = setInterval(() => {
+                        timeLeft--;
+                        if (timeLeft >= 0) {
+                            if (isDrawer && currentWord) {
+                                gameStatus.textContent = `Draw: ${currentWord} (${timeLeft}s)`;
+                            } else {
+                                gameStatus.textContent = `${data.drawer} is drawing... (Category: ${data.category}) (${timeLeft}s)`;
+                            }
+                        }
+                        if (timeLeft <= 0) {
+                            clearInterval(timerInterval);
+                        }
+                    }, 1000);
+                }
+            });
+
+            socket.on('wordToDraw', (word) => {
+                currentWord = word;
+                if (canDraw) {
+                    gameStatus.textContent = `Draw: ${word}`;
+                }
+                console.log('Word to draw:', word);
+            });
+
+            socket.on('roundEnd', (data) => {
+                if (timerInterval) clearInterval(timerInterval);
+                gameStatus.textContent = data.reason;
+                if (data.word) {
+                    gameStatus.textContent += ` The word was: ${data.word}`;
+                }
+                setGameMode(false);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                canvasState = [];
+                console.log('Round ended:', data);
+            });
+
+            socket.on('draw', (data) => {
+                drawLine(data);
+                canvasState.push(data);
+            });
+
+            socket.on('clearCanvas', () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                canvasState = [];
+            });
+
+            socket.on('correctGuess', (data) => {
+                addMessage(null, data.guesser, 'correct-guess');
+            });
+
+            socket.on('message', (data) => {
+                addMessage(data.message, data.username);
+            });
+
+            socket.on('waitingForStart', () => {
+                gameStatus.textContent = 'Waiting for game to start...';
+                setGameMode(false);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                canvasState = [];
+            });
+
+            socket.on('playersList', (players) => {
+                console.log('Players list updated:', players);
+            });
+        }
+    }
+
+    loginForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        username = document.getElementById('username').value.trim();
+        
+        if (username.length < 3) {
+            errorMessage.style.display = 'block';
+            return;
+        }
+
+        initializeSocket();
+        loginScreen.style.display = 'none';
+        gameScreen.style.display = 'flex';
+        resetCanvasAndEvents();
+    });
+
+    function setGameMode(isDrawer) {
+        gameContent.className = 'game-content ' + (isDrawer ? 'drawer-mode' : 'guesser-mode');
+        chatInput.disabled = isDrawer;
+        sendMessage.disabled = isDrawer;
+        canDraw = isDrawer;
+        console.log('Set game mode - canDraw:', canDraw);
+
+        if (!isDrawer) {
+            redrawCanvas();
+        } else {
+            resetCanvasAndEvents();
+        }
+    }
+
+    function getTouchPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        return {
+            x: touch.clientX - rect.left,
+            y: touch.clientY - rect.top
+        };
+    }
+
+    function startDrawing(e) {
+        if (!canDraw) return;
+        e.preventDefault();
+        isDrawing = true;
+
+        if (e.type === 'touchstart') {
+            const pos = getTouchPos(e);
+            lastX = pos.x;
+            lastY = pos.y;
+        } else {
+            lastX = e.offsetX;
+            lastY = e.offsetY;
+        }
+    }
+
+    function draw(e) {
+        if (!isDrawing || !canDraw) return;
+        e.preventDefault();
+
+        let currentX, currentY;
+
+        if (e.type === 'touchmove') {
+            const pos = getTouchPos(e);
+            currentX = pos.x;
+            currentY = pos.y;
+        } else {
+            currentX = e.offsetX;
+            currentY = e.offsetY;
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(currentX, currentY);
+        ctx.strokeStyle = document.getElementById('colorPicker').value;
+        ctx.lineWidth = document.getElementById('brushSize').value;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+
+        const drawData = {
+            x0: lastX,
+            y0: lastY,
+            x1: currentX,
+            y1: currentY,
+            color: document.getElementById('colorPicker').value,
+            width: document.getElementById('brushSize').value
+        };
+        socket.emit('draw', drawData);
+        canvasState.push(drawData);
+        
+        lastX = currentX;
+        lastY = currentY;
+    }
+
+    function drawLine(data) {
+        ctx.beginPath();
+        ctx.moveTo(data.x0, data.y0);
+        ctx.lineTo(data.x1, data.y1);
+        ctx.strokeStyle = data.color;
+        ctx.lineWidth = data.width;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+    }
+
+    function stopDrawing() {
+        isDrawing = false;
+    }
+
+    function initializeDrawing() {
+        console.log('Initializing drawing event listeners');
+        canvas.removeEventListener('mousedown', startDrawing);
+        canvas.removeEventListener('mousemove', draw);
+        canvas.removeEventListener('mouseup', stopDrawing);
+        canvas.removeEventListener('mouseout', stopDrawing);
+        canvas.removeEventListener('touchstart', startDrawing);
+        canvas.removeEventListener('touchmove', draw);
+        canvas.removeEventListener('touchend', stopDrawing);
+        canvas.removeEventListener('touchcancel', stopDrawing);
+
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+        canvas.addEventListener('touchstart', startDrawing, { passive: false });
+        canvas.addEventListener('touchmove', draw, { passive: false });
+        canvas.addEventListener('touchend', stopDrawing, { passive: false });
+        canvas.addEventListener('touchcancel', stopDrawing, { passive: false });
+    }
+
+    document.getElementById('clearCanvas').onclick = function() {
+        if (canDraw) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            socket.emit('clearCanvas');
+            canvasState = [];
+        }
+    };
+
+    function redrawCanvas() {
+        console.log('Redrawing canvas with state:', canvasState.length, 'items');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvasState.forEach(drawLine);
+    }
+
+    function resetCanvasAndEvents() {
+        console.log('Resetting canvas and events');
+        resizeCanvas();
+        initializeDrawing();
+        redrawCanvas();
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && socket) {
+            console.log('Page visible - forcing reconnect and reset');
+            setTimeout(() => {
+                resetCanvasAndEvents();
+                if (socket.connected) {
+                    socket.emit('reconnectPlayer', username);
+                } else {
+                    console.log('Socket not connected yet - awaiting reconnect');
+                }
+            }, 200);
+        } else if (document.hidden) {
+            console.log('Page hidden');
+        }
+    });
+
+    function addMessage(message, sender, type = 'normal') {
+        const messageElement = document.createElement('div');
+        messageElement.className = 'message';
+        
+        if (type === 'correct-guess') {
+            messageElement.classList.add('correct-guess');
+            messageElement.textContent = `${sender} guessed the word correctly!`;
+        } else {
+            messageElement.textContent = `${sender}: ${message}`;
+        }
+        
+        chatMessages.appendChild(messageElement);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    sendMessage.addEventListener('click', () => {
+        const message = chatInput.value.trim();
+        if (message && !canDraw) {
+            socket.emit('guess', message);
+            chatInput.value = '';
+            chatInput.focus();
+        }
+    });
+
+    chatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            sendMessage.click();
+        }
+    });
+
+    function resizeCanvas() {
+        const container = canvas.parentElement;
+        const rect = container.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        console.log('Canvas resized to:', canvas.width, 'x', canvas.height);
+        redrawCanvas();
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('orientationchange', () => {
+        console.log('Orientation changed');
+        setTimeout(resizeCanvas, 100);
+    });
+
+    document.body.addEventListener('touchstart', function(e) {
+        if (e.target === canvas) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+
+    document.body.addEventListener('touchend', function(e) {
+        if (e.target === canvas) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+
+    document.body.addEventListener('touchmove', function(e) {
+        if (e.target === canvas) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+
+    initializeDrawing();
+</script>
+</body>
+</html>

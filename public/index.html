@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pictionary Game</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        /* Existing styles remain unchanged */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            background: #f0f0f0;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: 20px;
+            gap: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .timer {
+            background: #2196F3;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            min-width: 100px;
+            text-align: center;
+            font-size: 16px;
+        }
+
+        .game-status {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            flex: 1;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .start-button {
+            background: #FF5722;
+            color: white;
+            padding: 10px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            display: none;
+        }
+
+        .start-button:hover {
+            background: #F4511E;
+        }
+
+        .start-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .reset-button {
+            background: #dc3545;
+            color: white;
+            padding: 10px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .reset-button:hover {
+            background: #c82333;
+        }
+
+        .main-content {
+            display: flex;
+            flex: 1;
+            gap: 20px;
+            min-height: 0;
+        }
+
+        .game-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            min-width: 0;
+        }
+
+        .canvas-container {
+            flex: 1;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden;
+            min-height: 400px;
+        }
+
+        #drawingCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .side-panel {
+            width: 350px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .players-panel {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #eee;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .players-list {
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .player-item {
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+        }
+
+        .player-score {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .current-drawer {
+            background: #E3F2FD;
+            border-left: 4px solid #2196F3;
+        }
+
+        .chat-panel {
+            flex: 1;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            min-height: 300px;
+        }
+
+        #chatMessages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .message {
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            word-break: break-word;
+        }
+
+        .correct-guess {
+            background: #E8F5E9;
+            color: #2E7D32;
+            font-weight: bold;
+        }
+
+        .system-message {
+            background: #E3F2FD;
+            color: #1565C0;
+            font-style: italic;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #bbb;
+        }
+
+        .upload-button {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-right: 10px;
+        }
+
+        .upload-button:hover {
+            background: #45a049;
+        }
+
+        .upload-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        #fileInput {
+            display: none;
+        }
+        .correct-guesser {
+            background: #C8E6C9; /* Light green background */
+            border-left: 4px solid #4CAF50; /* Green border */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="QRcode.png" alt="Join Game QR Code" style="width: 60px; height: auto;">
+            <div class="timer" id="timer">Waiting</div>
+            <div class="game-status" id="gameStatus">Waiting for players...</div>
+            <button class="upload-button" id="uploadButton">Upload Word List</button>
+            <input type="file" id="fileInput" accept=".txt">
+            <button class="start-button" id="startGame">Start Game</button>
+            <button class="reset-button" id="resetGame">Reset Game</button>
+        </div>
+
+        <div class="main-content">
+            <div class="game-section">
+                <div class="canvas-container">
+                    <canvas id="drawingCanvas"></canvas>
+                </div>
+            </div>
+
+            <div class="side-panel">
+                <div class="players-panel">
+                    <div class="panel-header">
+                        <span>Players</span>
+                        <span id="playerCount">0 players</span>
+                    </div>
+                    <div class="players-list" id="playersList"></div>
+                </div>
+
+                <div class="chat-panel">
+                    <div class="panel-header">Live Chat</div>
+                    <div id="chatMessages"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+<audio id="countdownAudio" src="countdown-10s.mp3" preload="auto"></audio>
+<audio id="finishAudio" src="finish.mp3" preload="auto"></audio>
+<audio id="correctAudio" src="correct.mp3" preload="auto"></audio>
+
+<script>
+    const socket = io();
+    const canvas = document.getElementById('drawingCanvas');
+    const ctx = canvas.getContext('2d');
+    const gameStatus = document.getElementById('gameStatus');
+    const timer = document.getElementById('timer');
+    const playersList = document.getElementById('playersList');
+    const chatMessages = document.getElementById('chatMessages');
+    const playerCount = document.getElementById('playerCount');
+    const startButton = document.getElementById('startGame');
+    const uploadButton = document.getElementById('uploadButton');
+    const fileInput = document.getElementById('fileInput');
+    const resetButton = document.getElementById('resetGame');
+    let timerInterval; // This remains defined here
+
+    uploadButton.addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                socket.emit('uploadWordList', content);
+            };
+            reader.readAsText(file);
+        }
+    });
+
+    socket.on('wordListUploaded', (success) => {
+        if (success) {
+            uploadButton.textContent = 'Uploaded';
+            uploadButton.disabled = true;
+        } else {
+            alert('Failed to upload word list. Please check the file format.');
+        }
+    });
+
+    resetButton.addEventListener('click', () => {
+        if (confirm('Are you sure you want to reset the game? This will kick all players and clear all progress.')) {
+            socket.emit('resetGame');
+            playerCount.textContent = '0 players';
+        }
+    });
+
+    socket.on('gameReset', () => {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        playersList.innerHTML = '';
+        chatMessages.innerHTML = '';
+        gameStatus.textContent = 'Game has been reset. Waiting for players...';
+        timer.textContent = 'Waiting';
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        uploadButton.textContent = 'Upload Word List';
+        uploadButton.disabled = false;
+        startButton.style.display = 'none';
+    });
+
+    function drawLine(data) {
+        ctx.beginPath();
+        ctx.moveTo(data.x0, data.y0);
+        ctx.lineTo(data.x1, data.y1);
+        ctx.strokeStyle = data.color;
+        ctx.lineWidth = data.width;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+    }
+
+    function addMessage(message, sender, type = 'normal') {
+        const messageElement = document.createElement('div');
+        messageElement.className = 'message';
+        if (type === 'correct-guess') {
+            messageElement.classList.add('correct-guess');
+            messageElement.textContent = `${sender} guessed the word correctly!`;
+        } else if (type === 'system') {
+            messageElement.classList.add('system-message');
+            messageElement.textContent = message;
+        } else {
+            messageElement.textContent = `${sender}: ${message}`;
+        }
+        chatMessages.appendChild(messageElement);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    socket.on('waitingForStart', () => {
+        gameStatus.textContent = 'Waiting for players to start game...';
+        timer.textContent = 'Waiting';
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        socket.emit('requestPlayerCount');
+    });
+
+    socket.on('draw', drawLine);
+    socket.on('clearCanvas', () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    });
+
+    socket.on('roundStart', (data) => {
+        startButton.style.display = 'none';
+        gameStatus.textContent = `${data.drawer} is drawing... (Category: ${data.category})`;
+        const serverStartTime = data.startTime;
+        const currentTime = Date.now();
+        let timeLeft = 40 - Math.floor((currentTime - serverStartTime) / 1000);
+        const countdownAudio = document.getElementById('countdownAudio');
+        const finishAudio = document.getElementById('finishAudio');
+        let countdownPlayed = false;
+        let finishPlayed = false;
+
+        if (timerInterval) clearInterval(timerInterval);
+        timer.textContent = `${Math.max(0, timeLeft)}s`;
+
+        if (timeLeft > 0) {
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                if (timeLeft >= 0) {
+                    timer.textContent = `${timeLeft}s`;
+                    if (timeLeft === 10 && !countdownPlayed) {
+                        countdownAudio.play().catch(err => console.log('Countdown audio failed:', err));
+                        countdownPlayed = true;
+                    }
+                    if (timeLeft === 0 && !finishPlayed) {
+                        finishAudio.play().catch(err => console.log('Finish audio failed:', err));
+                        finishPlayed = true;
+                    }
+                }
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                }
+            }, 1000);
+        }
+    });
+
+    socket.on('roundEnd', (data) => {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        gameStatus.textContent = `${data.reason}${data.word ? ` The word was: ${data.word}` : ''}`;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    });
+
+    socket.on('correctGuess', (data) => {
+        addMessage(null, data.guesser, 'correct-guess');
+        const correctAudio = document.getElementById('correctAudio');
+        correctAudio.play().catch(err => console.log('Correct audio failed:', err));
+    });
+
+    socket.on('playersList', (players) => {
+        const sortedPlayers = players.sort((a, b) => b.score - a.score);
+        playerCount.textContent = `${sortedPlayers.length} players`;
+        playersList.innerHTML = sortedPlayers
+            .map(p => `
+                <div class="player-item ${p.isDrawing ? 'current-drawer' : ''} ${p.hasGuessed ? 'correct-guesser' : ''}">
+                    <span>${p.username} ${p.isDrawing ? '(Drawing)' : ''}</span>
+                    <span class="player-score">${p.score} pts</span>
+                </div>
+            `)
+            .join('');
+
+        if (!sortedPlayers.some(p => p.isDrawing) && sortedPlayers.length >= 2) {
+            startButton.style.display = 'block';
+        } else {
+            startButton.style.display = 'none';
+        }
+        startButton.disabled = false;
+    });
+
+    socket.on('message', (data) => {
+        addMessage(data.message, data.username);
+    });
+
+    startButton.addEventListener('click', () => {
+        if (uploadButton.textContent !== 'Uploaded') {
+            alert('Please upload a word list before starting the game!');
+            return;
+        }
+        socket.emit('startGame');
+    });
+
+    function resizeCanvas() {
+        const container = canvas.parentElement;
+        const rect = container.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+    });
+
+    socket.on('connect', () => {
+        socket.emit('requestPlayerCount');
+    });
+</script>
+</body>
+</html>
