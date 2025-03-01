@@ -8,6 +8,10 @@ const path = require('path');
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/player', (req, res) => res.sendFile(path.join(__dirname, 'public', 'player.html')));
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/finish.mp3', (req, res) => {
+    res.set('Content-Type', 'audio/mpeg');
+    res.sendFile(path.join(__dirname, 'public', 'finish.mp3'));
+});
 
 function createInitialGameState() {
     return {
@@ -77,7 +81,6 @@ function startNewRound() {
 
     gameState.correctGuessers.clear();
     gameState.canvasState = [];
-    // Reset hasGuessed for all players
     gameState.players.forEach(player => player.hasGuessed = false);
 
     if (gameState.roundTimeout) {
@@ -101,7 +104,7 @@ function startNewRound() {
     players.forEach(p => p.isDrawing = (p.username === nextDrawer.username));
 
     gameState.currentWord = getRandomWord();
-    gameState.roundStartTime = Date.now();
+    gameState.roundStartTime = Date.now(); // Reset the round start time
 
     const drawerSockets = gameState.usernameToSockets.get(nextDrawer.username) || [];
     io.emit('roundStart', {
@@ -116,11 +119,12 @@ function startNewRound() {
         io.to(socketId).emit('wordToDraw', gameState.currentWord);
     });
 
+    // Set a new 40-second timer for the round
     gameState.roundTimeout = setTimeout(() => {
         endRound("Time's up!", true);
     }, 40000);
 
-    broadcastPlayersList(); // Update players list with cleared highlights
+    broadcastPlayersList();
 }
 
 function endRound(reason, revealWord = false) {
@@ -133,7 +137,15 @@ function endRound(reason, revealWord = false) {
     gameState.roundStartTime = null;
     gameState.canvasState = [];
     
-    setTimeout(startNewRound, 3000);
+    if (gameState.roundTimeout) {
+        clearTimeout(gameState.roundTimeout);
+        gameState.roundTimeout = null; // Clear the previous timeout
+    }
+
+    // Start a new round after a short delay
+    setTimeout(() => {
+        startNewRound();
+    }, 3000); // 3-second delay before starting the new round
 }
 
 function broadcastPlayersList() {
@@ -269,50 +281,51 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('guess', (message) => {
-        const username = Array.from(gameState.usernameToSockets.entries())
-            .find(([_, sockets]) => sockets.includes(socket.id))?.[0];
-        if (username && 
-            username !== gameState.currentDrawer && 
-            gameState.currentWord && 
-            !gameState.correctGuessers.has(username)) {
+socket.on('guess', (message) => {
+    const username = Array.from(gameState.usernameToSockets.entries())
+        .find(([_, sockets]) => sockets.includes(socket.id))?.[0];
+    if (username && 
+        username !== gameState.currentDrawer && 
+        gameState.currentWord && 
+        !gameState.correctGuessers.has(username)) {
+        
+        const player = gameState.players.get(username);
+        if (!player) return;
+        
+        if (message.toLowerCase().trim() === gameState.currentWord.toLowerCase()) {
+            const basePoints = 10;
+            const pointsDeduction = gameState.correctGuessers.size * 2;
+            const points = Math.max(basePoints - pointsDeduction, 2);
             
-            const player = gameState.players.get(username);
-            if (!player) return;
-            
-            if (message.toLowerCase().trim() === gameState.currentWord.toLowerCase()) {
-                const basePoints = 10;
-                const pointsDeduction = gameState.correctGuessers.size * 2;
-                const points = Math.max(basePoints - pointsDeduction, 2);
-                
-                player.score += points;
-                player.hasGuessed = true; // Mark player as having guessed correctly
-                gameState.correctGuessers.add(username);
+            player.score += points;
+            player.hasGuessed = true;
+            gameState.correctGuessers.add(username);
 
-                const drawer = gameState.players.get(gameState.currentDrawer);
-                if (drawer) {
-                    drawer.score += 2;
-                }
-
-                io.emit('correctGuess', {
-                    guesser: username,
-                    points: points
-                });
-
-                broadcastPlayersList(); // Update players list with highlight
-
-                const nonDrawingPlayers = gameState.players.size - 1;
-                if (gameState.correctGuessers.size >= nonDrawingPlayers) {
-                    endRound("Everyone guessed correctly!", true);
-                }
-            } else {
-                io.emit('message', {
-                    username: username,
-                    message: message
-                });
+            const drawer = gameState.players.get(gameState.currentDrawer);
+            if (drawer) {
+                drawer.score += 2;
             }
+
+            io.emit('correctGuess', {
+                guesser: username,
+                points: points
+            });
+
+            broadcastPlayersList();
+
+            const nonDrawingPlayers = gameState.players.size - 1;
+            if (gameState.correctGuessers.size >= nonDrawingPlayers) {
+                // End the round immediately with a specific reason
+                endRound("Everyone guessed correctly!", true);
+            }
+        } else {
+            io.emit('message', {
+                username: username,
+                message: message
+            });
         }
-    });
+    }
+});
 
     socket.on('disconnect', () => {
         const entry = Array.from(gameState.usernameToSockets.entries())

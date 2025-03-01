@@ -413,50 +413,51 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
     });
 
-    socket.on('roundStart', (data) => {
-        startButton.style.display = 'none';
-        gameStatus.textContent = `${data.drawer} is drawing... (Category: ${data.category})`;
-        const serverStartTime = data.startTime;
-        const currentTime = Date.now();
-        let timeLeft = 40 - Math.floor((currentTime - serverStartTime) / 1000);
-        const countdownAudio = document.getElementById('countdownAudio');
-        const finishAudio = document.getElementById('finishAudio');
-        let countdownPlayed = false;
-        let finishPlayed = false;
+socket.on('roundStart', (data) => {
+    startButton.style.display = 'none';
+    gameStatus.textContent = `${data.drawer} is drawing... (Category: ${data.category})`;
+    const serverStartTime = data.startTime;
+    const currentTime = Date.now();
+    let timeLeft = 40 - Math.floor((currentTime - serverStartTime) / 1000);
+    const countdownAudio = document.getElementById('countdownAudio');
+    const finishAudio = document.getElementById('finishAudio');
+    let countdownPlayed = false;
 
-        if (timerInterval) clearInterval(timerInterval);
-        timer.textContent = `${Math.max(0, timeLeft)}s`;
+    if (timerInterval) clearInterval(timerInterval);
+    timer.textContent = `${Math.max(0, timeLeft)}s`;
 
-        if (timeLeft > 0) {
-            timerInterval = setInterval(() => {
-                timeLeft--;
-                if (timeLeft >= 0) {
-                    timer.textContent = `${timeLeft}s`;
-                    if (timeLeft === 10 && !countdownPlayed) {
-                        countdownAudio.play().catch(err => console.log('Countdown audio failed:', err));
-                        countdownPlayed = true;
-                    }
-                    if (timeLeft === 0 && !finishPlayed) {
-                        finishAudio.play().catch(err => console.log('Finish audio failed:', err));
-                        finishPlayed = true;
-                    }
+    if (timeLeft > 0) {
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            if (timeLeft >= 0) {
+                timer.textContent = `${timeLeft}s`;
+                if (timeLeft === 10 && !countdownPlayed) {
+                    countdownAudio.play().catch(err => console.log('Countdown audio failed:', err));
+                    countdownPlayed = true;
                 }
-                if (timeLeft <= 0) {
-                    clearInterval(timerInterval);
-                    timerInterval = null;
-                }
-            }, 1000);
-        }
-    });
+            }
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }, 1000);
+    }
+});
 
-    socket.on('roundEnd', (data) => {
-        if (timerInterval) {
-            clearInterval(timerInterval);
-            timerInterval = null;
-        }
-        gameStatus.textContent = `${data.reason}${data.word ? ` The word was: ${data.word}` : ''}`;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-    });
+socket.on('roundEnd', (data) => {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+    gameStatus.textContent = `${data.reason}${data.word ? ` The word was: ${data.word}` : ''}`;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Play finish.mp3 if everyone guessed correctly or time's up
+    const finishAudio = document.getElementById('finishAudio');
+    if (data.reason === "Everyone guessed correctly!" || data.reason === "Time's up!") {
+        finishAudio.play().catch(err => console.log('Finish audio failed:', err));
+    }
+});
 
     socket.on('correctGuess', (data) => {
         addMessage(null, data.guesser, 'correct-guess');
