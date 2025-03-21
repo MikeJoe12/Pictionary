@@ -122,7 +122,7 @@ function startNewRound() {
     // Set a new 40-second timer for the round
     gameState.roundTimeout = setTimeout(() => {
         endRound("Time's up!", true);
-    }, 40000);
+    }, 60000);
 
     broadcastPlayersList();
 }

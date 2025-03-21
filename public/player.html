@@ -261,6 +261,53 @@
         .guesser-mode .chat-area {
             height: calc(100vh - 60px);
         }
+		.popup-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 2000;
+    }
+
+    .popup-content {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        text-align: center;
+        max-width: 400px;
+        width: 90%;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .popup-content h3 {
+        margin-bottom: 15px;
+        color: #333;
+    }
+
+    .popup-content p {
+        margin-bottom: 20px;
+        color: #666;
+        font-size: 18px;
+    }
+
+    .popup-content button {
+        padding: 10px 30px;
+        background: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        cursor: pointer;
+    }
+
+    .popup-content button:hover {
+        background: #45a049;
+    }
     </style>
 </head>
 <body>
@@ -307,7 +354,13 @@
             </div>
         </div>
     </div>
-
+<div class="popup-overlay" id="drawPopup">
+    <div class="popup-content">
+        <h3>Your Turn to Draw!</h3>
+        <p>Draw: <span id="popupWord"></span></p>
+        <button id="startDrawingBtn">Okay</button>
+    </div>
+</div>
 <script>
     const loginScreen = document.getElementById('loginScreen');
     const gameScreen = document.getElementById('gameScreen');
@@ -320,7 +373,11 @@
     const chatMessages = document.getElementById('chatMessages');
     const chatInput = document.getElementById('chatInput');
     const sendMessage = document.getElementById('sendMessage');
-
+	const drawPopup = document.getElementById('drawPopup');
+    const popupWord = document.getElementById('popupWord');
+    const startDrawingBtn = document.getElementById('startDrawingBtn');
+    let drawingStarted = false;
+	
     let socket = null;
     let isDrawing = false;
     let lastX = 0;
@@ -331,6 +388,22 @@
     let currentWord = null;
     let canvasState = [];
 
+function showDrawPopup(word) {
+        popupWord.textContent = word;
+        drawPopup.style.display = 'flex';
+        canDraw = false; // Disable drawing until they click Okay
+        drawingStarted = false;
+    }
+
+    // Add click handler for the Okay button
+    startDrawingBtn.addEventListener('click', () => {
+        drawPopup.style.display = 'none';
+        canDraw = true;
+        drawingStarted = true;
+        gameStatus.textContent = `Draw: ${currentWord} (60s)`; // Start with 60 seconds
+        resetCanvasAndEvents();
+    });
+	
     function resetToLogin() {
         console.log('Resetting to login screen');
         if (timerInterval) clearInterval(timerInterval);
@@ -383,52 +456,52 @@
                 }, 1000);
             });
 
-            socket.on('roundStart', (data) => {
-                const isDrawer = data.drawer === username;
-                setGameMode(isDrawer);
-                console.log('Round start - isDrawer:', isDrawer, 'data:', data);
-                
-                if (isDrawer) {
-                    if (currentWord) {
-                        gameStatus.textContent = `Draw: ${currentWord}`;
+socket.on('roundStart', (data) => {
+        const isDrawer = data.drawer === username;
+        setGameMode(isDrawer);
+        console.log('Round start - isDrawer:', isDrawer, 'data:', data);
+        
+        if (isDrawer) {
+            if (currentWord) {
+                showDrawPopup(currentWord);
+            }
+            chatInput.placeholder = "You can't guess while drawing";
+        } else {
+            currentWord = null;
+            gameStatus.textContent = `${data.drawer} is drawing... (Category: ${data.category})`;
+            chatInput.placeholder = "Type your guess...";
+        }
+
+        const serverStartTime = data.startTime;
+        const currentTime = Date.now();
+        let timeLeft = 60 - Math.floor((currentTime - serverStartTime) / 1000); // Changed to 60 seconds
+        
+        if (timerInterval) clearInterval(timerInterval);
+        
+        if (timeLeft > 0) {
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                if (timeLeft >= 0) {
+                    if (isDrawer && currentWord && drawingStarted) {
+                        gameStatus.textContent = `Draw: ${currentWord} (${timeLeft}s)`;
+                    } else if (!isDrawer) {
+                        gameStatus.textContent = `${data.drawer} is drawing... (Category: ${data.category}) (${timeLeft}s)`;
                     }
-                    chatInput.placeholder = "You can't guess while drawing";
-                } else {
-                    currentWord = null;
-                    gameStatus.textContent = `${data.drawer} is drawing... (Category: ${data.category})`;
-                    chatInput.placeholder = "Type your guess...";
                 }
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                }
+            }, 1000);
+        }
+    });
 
-                const serverStartTime = data.startTime;
-                const currentTime = Date.now();
-                let timeLeft = 40 - Math.floor((currentTime - serverStartTime) / 1000);
-                
-                if (timerInterval) clearInterval(timerInterval);
-                
-                if (timeLeft > 0) {
-                    timerInterval = setInterval(() => {
-                        timeLeft--;
-                        if (timeLeft >= 0) {
-                            if (isDrawer && currentWord) {
-                                gameStatus.textContent = `Draw: ${currentWord} (${timeLeft}s)`;
-                            } else {
-                                gameStatus.textContent = `${data.drawer} is drawing... (Category: ${data.category}) (${timeLeft}s)`;
-                            }
-                        }
-                        if (timeLeft <= 0) {
-                            clearInterval(timerInterval);
-                        }
-                    }, 1000);
-                }
-            });
-
-            socket.on('wordToDraw', (word) => {
-                currentWord = word;
-                if (canDraw) {
-                    gameStatus.textContent = `Draw: ${word}`;
-                }
-                console.log('Word to draw:', word);
-            });
+socket.on('wordToDraw', (word) => {
+        currentWord = word;
+        if (canDraw || !drawingStarted) {
+            showDrawPopup(word);
+        }
+        console.log('Word to draw:', word);
+    });
 
             socket.on('roundEnd', (data) => {
                 if (timerInterval) clearInterval(timerInterval);
